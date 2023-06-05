@@ -142,7 +142,7 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
               Inventory: true,
               Boosters: true,
               Game: true,
-              ItemUse: true,
+              Stats: true,
               Crafting: true,
               LotteryTicket: true,
               EconomyGuild: true,
@@ -416,17 +416,21 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
         },
       });
 
-      await prisma.economy.delete({
-        where: {
-          userId: message.author.id,
-        },
-      });
+      await prisma.economy
+        .delete({
+          where: {
+            userId: message.author.id,
+          },
+        })
+        .catch(() => {});
 
-      await prisma.premium.delete({
-        where: {
-          userId: message.author.id,
-        },
-      });
+      await prisma.premium
+        .delete({
+          where: {
+            userId: message.author.id,
+          },
+        })
+        .catch(() => {});
 
       await prisma.user.delete({
         where: {

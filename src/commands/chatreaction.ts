@@ -35,7 +35,7 @@ import {
   updateReactionSettings,
 } from "../utils/functions/chatreactions/utils";
 import { getWordList, updateWords } from "../utils/functions/chatreactions/words";
-import { getBalance, updateBalance } from "../utils/functions/economy/balance";
+import { calcMaxBet, getBalance, updateBalance } from "../utils/functions/economy/balance";
 import { createUser, formatNumber, isEcoBanned, userExists } from "../utils/functions/economy/utils";
 import { getPrefix } from "../utils/functions/guilds/utils";
 import { getMember } from "../utils/functions/member";
@@ -433,8 +433,6 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
       if (typeof result === "string") await updateBalance(result, (await getBalance(result)) + wager * 2);
     };
 
-    if (await isEcoBanned(message.author.id)) return send({ embeds: [new ErrorEmbed("you cant do this")] });
-
     if (args.length === 0) return send({ embeds: [new ErrorEmbed("/chatreaction duel <member> (wager)")] });
 
     const blacklisted = await getBlacklisted(message.guild);
@@ -462,6 +460,9 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
         return send({ embeds: [new ErrorEmbed(`${target.user.toString()} has requests disabled`)] });
       }
 
+      if ((await isEcoBanned(message.author.id)) && wager > 0)
+        return send({ embeds: [new ErrorEmbed("you are banned. lol.")] });
+
       if ((await isEcoBanned(target.user.id)) && wager > 0)
         return send({ embeds: [new ErrorEmbed("they are banned. lol.")] });
 
@@ -469,6 +470,16 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
 
       if ((await getBalance(target)) < wager)
         return send({ embeds: [new ErrorEmbed(`${target.user.toString()} cannot afford this wager`)] });
+
+      if (wager > (await calcMaxBet(message.member)) * 10)
+        return send({
+          embeds: [new ErrorEmbed(`your max bet is $**${((await calcMaxBet(message.member)) * 10).toLocaleString()}**`)],
+        });
+
+      if (wager > (await calcMaxBet(target)) * 10)
+        return send({
+          embeds: [new ErrorEmbed(`their max bet is $**${((await calcMaxBet(target)) * 10).toLocaleString()}**`)],
+        });
 
       if (duelRequests.has(message.author.id)) return send({ embeds: [new ErrorEmbed("you already have a duel request!")] });
       if (duelRequests.has(target.user.id)) return send({ embeds: [new ErrorEmbed("they already have a duel request!")] });
@@ -535,7 +546,15 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
       if (!wager) wager = 0;
       if (isNaN(wager)) wager = 0;
 
+      if ((await isEcoBanned(message.author.id)) && wager > 0)
+        return send({ embeds: [new ErrorEmbed("you are banned. lol.")] });
+
       if ((await getBalance(message.member)) < wager) return send({ embeds: [new ErrorEmbed("you cannot afford this")] });
+
+      if (wager > (await calcMaxBet(message.member)) * 10)
+        return send({
+          embeds: [new ErrorEmbed(`your max bet is $**${((await calcMaxBet(message.member)) * 10).toLocaleString()}**`)],
+        });
 
       if (duelRequests.has(message.author.id)) return send({ embeds: [new ErrorEmbed("you already have a duel request!")] });
 
@@ -560,7 +579,7 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
 
       const filter = async (i: Interaction): Promise<boolean> => {
         if (i.user.id != message.author.id && (i as ButtonInteraction).customId == "n") return false;
-        if (await isEcoBanned(i.user.id)) return false;
+        if ((await isEcoBanned(i.user.id)) && wager > 0) return false;
 
         if (i.user.id === message.author.id) {
           if ((i as ButtonInteraction).customId === "n") return true;
@@ -569,6 +588,15 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
 
         if (!(await userExists(i.user.id)) || (await getBalance(i.user.id)) < wager) {
           if (i.isRepliable()) await i.reply({ ephemeral: true, embeds: [new ErrorEmbed("you cannot afford this wager")] });
+          return false;
+        }
+
+        if ((await calcMaxBet(i.user.id)) * 10 < wager) {
+          if (i.isRepliable())
+            i.reply({
+              embeds: [new ErrorEmbed(`your max bet is $**${((await calcMaxBet(message.member)) * 10).toLocaleString()}**`)],
+            });
+
           return false;
         }
 

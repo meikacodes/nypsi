@@ -3,6 +3,7 @@ import { CustomEmbed } from "../../../models/EmbedBuilders";
 import Constants from "../../Constants";
 import { gamble } from "../../logger";
 import { addProgress } from "../economy/achievements";
+import { getBalance, updateBalance } from "../economy/balance";
 import { createGame } from "../economy/stats";
 import { isPremium } from "../premium/premium";
 import sleep from "../sleep";
@@ -150,6 +151,7 @@ export async function startOpenChatReaction(guild: Guild, channel: TextChannel) 
         if (winnersList.length == 1) {
           embed.setFooter({ text: "ended with 1 winner" });
         } else {
+          if (winnersList.length === 3) addProgress(winnersIDs[0], "fast_typer", 1);
           embed.setFooter({ text: `ended with ${winnersList.length} winners` });
         }
         updateWinnersText();
@@ -248,6 +250,8 @@ export async function startChatReactionDuel(
     embed.addField("winner", "nobody won... losers.");
 
     await msg.edit({ embeds: [embed] });
+    await updateBalance(challenger, (await getBalance(challenger)) + wager);
+    await updateBalance(target, (await getBalance(target)) + wager);
     return null;
   }
 

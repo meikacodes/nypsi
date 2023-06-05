@@ -19,7 +19,7 @@ import { addMember, getPremiumProfile, isPremium, renewUser, setTier } from "../
 import { percentChance } from "../functions/random";
 import requestDM from "../functions/requestdm";
 import { isUserBlacklisted } from "../functions/users/blacklist";
-import { addNotificationToQueue, getDmSettings } from "../functions/users/notifications";
+import { addNotificationToQueue, getDmSettings, getPreferences } from "../functions/users/notifications";
 import { logger } from "../logger";
 import ms = require("ms");
 
@@ -27,6 +27,11 @@ loadItems(false);
 
 const app = express();
 const webhook = new topgg.Webhook(process.env.TOPGG_AUTH);
+const apiRateLimits = new Map<string, number>();
+
+setInterval(() => {
+  apiRateLimits.clear();
+}, ms("1 hour"));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -53,6 +58,30 @@ export function listen(manager: ClusterManager) {
     response.status(200).send();
 
     return handleKofiData(data);
+  });
+
+  app.get("/commands-today", async (req, response) => {
+    const ip = req.headers["x-forwarded-for"] as string;
+
+    if (apiRateLimits.has(ip)) {
+      apiRateLimits.set(ip, apiRateLimits.get(ip) + 1);
+    } else {
+      apiRateLimits.set(ip, 1);
+    }
+
+    if (apiRateLimits.get(ip) >= 500) {
+      response.status(429).end();
+      return;
+    }
+
+    const total = Object.values(await redis.hgetall(Constants.redis.nypsi.TOP_COMMANDS))
+      .map((i) => parseInt(i))
+      .reduce((a, b) => a + b);
+    const users = Object.entries(await redis.hgetall(Constants.redis.nypsi.TOP_COMMANDS_USER)).map((i) => {
+      return { user: i[0].split("#")[0], amount: parseInt(i[1]) };
+    });
+
+    return response.status(200).send(JSON.stringify({ total, users }));
   });
 
   app.listen(process.env.EXPRESS_PORT || 5000);
@@ -237,7 +266,7 @@ async function handleKofiData(data: KofiResponse) {
             };
 
             await addNotificationToQueue(payload);
-            if (data.is_public) {
+            if (data.is_public && (await getPreferences(user.id)).leaderboards) {
               const hook = new WebhookClient({ url: process.env.THANKYOU_HOOK });
               await hook.send({
                 embeds: [
@@ -253,7 +282,7 @@ async function handleKofiData(data: KofiResponse) {
             }
           }
 
-          const gemChance = Math.floor(Math.random() * 77);
+          const gemChance = Math.floor(Math.random() * 144);
 
           if (gemChance == 7) {
             await addInventoryItem(user.id, "pink_gem", 1);
@@ -367,7 +396,7 @@ async function handleKofiData(data: KofiResponse) {
         if ((await getPremiumProfile(user.id)).getLevelString().toLowerCase() != item) {
           await setTier(user.id, premiums.indexOf(item) + 1);
           await renewUser(user.id);
-          if (data.is_public) {
+          if (data.is_public && (await getPreferences(user.id)).leaderboards) {
             const hook = new WebhookClient({ url: process.env.THANKYOU_HOOK });
             await hook.send({
               embeds: [
@@ -383,7 +412,7 @@ async function handleKofiData(data: KofiResponse) {
         }
       } else {
         await addMember(user.id, premiums.indexOf(item) + 1);
-        if (data.is_public) {
+        if (data.is_public && (await getPreferences(user.id)).leaderboards) {
           const hook = new WebhookClient({ url: process.env.THANKYOU_HOOK });
           await hook.send({
             embeds: [

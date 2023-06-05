@@ -10,11 +10,12 @@ import {
   MessageActionRowComponentBuilder,
   MessageEditOptions,
 } from "discord.js";
+import { inPlaceSort } from "fast-sort";
 import { Command, NypsiCommandInteraction } from "../models/Command";
 import { CustomEmbed, ErrorEmbed } from "../models/EmbedBuilders";
 import { getCraftingItems, newCraftItem } from "../utils/functions/economy/crafting";
 import { getInventory, selectItem, setInventoryItem } from "../utils/functions/economy/inventory";
-import { addItemUse } from "../utils/functions/economy/stats";
+import { addStat } from "../utils/functions/economy/stats";
 import { createUser, getItems, userExists } from "../utils/functions/economy/utils";
 import { getTier, isPremium } from "../utils/functions/premium/premium";
 import { addCooldown, getResponse, onCooldown } from "../utils/handlers/cooldownhandler";
@@ -142,7 +143,7 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
       embed.addField("completed", desc.join("\n"));
     }
 
-    const availableToCraft: string[] = [];
+    const availableToCraftUnsorted: [string, number][] = [];
 
     for (const itemId of craftableItemIds) {
       const ingrediants = items[itemId].craft.ingrediants.map((i) => i.split(":")[0]);
@@ -163,6 +164,8 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
       if (isZero == ingrediants.length) continue;
 
       let craftable = 1e10;
+      let totalNeeded = 0;
+      let totalHas = 0;
 
       for (const [key, value] of owned.entries()) {
         const needed = parseInt(items[itemId].craft.ingrediants.find((i) => i.split(":")[0] == key).split(":")[1]);
@@ -172,14 +175,22 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
         const recipeAvailableToCraft = Math.floor(value / needed);
 
         if (recipeAvailableToCraft < craftable) craftable = recipeAvailableToCraft;
+        totalNeeded += needed;
+        totalHas += owned.get(key);
       }
 
       if (craftable != 0) {
         item += `\n${craftable.toLocaleString()} craftable`;
       }
 
-      availableToCraft.push(item);
+      const score = (totalHas / totalNeeded) * 100;
+
+      availableToCraftUnsorted.push([item, score]);
     }
+
+    const availableToCraft = inPlaceSort(availableToCraftUnsorted)
+      .desc((i) => i[1])
+      .map((i) => i[0]);
 
     const pages = new Map<number, string[]>();
 
@@ -401,7 +412,7 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
         )
       );
 
-      promises.push(addItemUse(message.member, item, amount).catch(() => {}));
+      promises.push(addStat(message.member, item, amount).catch(() => {}));
     }
 
     await Promise.all(promises);

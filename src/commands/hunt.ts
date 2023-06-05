@@ -3,10 +3,11 @@ import { Command, NypsiCommandInteraction } from "../models/Command";
 import { CustomEmbed, ErrorEmbed } from "../models/EmbedBuilders";
 import { addProgress } from "../utils/functions/economy/achievements";
 import { getBoosters } from "../utils/functions/economy/boosters";
-import { addInventoryItem, getInventory, setInventoryItem } from "../utils/functions/economy/inventory";
-import { addItemUse } from "../utils/functions/economy/stats";
+import { addInventoryItem, gemBreak, getInventory, setInventoryItem } from "../utils/functions/economy/inventory";
+import { addStat } from "../utils/functions/economy/stats";
 import { createUser, getItems, userExists } from "../utils/functions/economy/utils";
 import { addCooldown, getResponse, onCooldown } from "../utils/handlers/cooldownhandler";
+import { percentChance } from "../utils/functions/random";
 
 const cmd = new Command("hunt", "go to a field and hunt", "money");
 
@@ -74,7 +75,7 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
 
   await addCooldown(cmd.name, message.member, 300);
 
-  await addItemUse(message.member, gun);
+  await addStat(message.member, gun);
 
   const huntItems = Array.from(Object.keys(items));
 
@@ -96,6 +97,24 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
       } else {
         times++;
       }
+    }
+  }
+
+  if (inventory.find((i) => i.item === "purple_gem")?.amount > 0) {
+    if (percentChance(0.2)) {
+      gemBreak(message.author.id, 0.07, "purple_gem");
+      times++;
+    }
+  }
+  if (inventory.find((i) => i.item === "white_gem")?.amount > 0) {
+    if (percentChance(0.2)) {
+      gemBreak(message.author.id, 0.07, "white_gem");
+      times++;
+    }
+  }
+  if (inventory.find((i) => i.item === "crystal_heart")?.amount > 0) {
+    if (percentChance(0.1)) {
+      times++;
     }
   }
 
@@ -158,11 +177,11 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
     let amount = 1;
 
     if (gun == "terrible_gun") {
-      amount = Math.floor(Math.random() * 2) + 1;
+      amount = Math.floor(Math.random() * 1) + 1;
     } else if (gun == "gun") {
-      amount = Math.floor(Math.random() * 4) + 1;
+      amount = Math.floor(Math.random() * 3) + 1;
     } else if (gun == "incredible_gun") {
-      amount = Math.floor(Math.random() * 6) + 2;
+      amount = Math.floor(Math.random() * 5) + 1;
     }
 
     await addInventoryItem(message.member, chosen, amount);

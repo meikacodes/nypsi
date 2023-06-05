@@ -15,6 +15,7 @@ import { Command, NypsiCommandInteraction } from "../models/Command";
 import { CustomEmbed, ErrorEmbed } from "../models/EmbedBuilders";
 import { fetchGame } from "../utils/functions/economy/stats";
 import PageManager from "../utils/functions/page";
+import { getPreferences } from "../utils/functions/users/notifications";
 import { getLastKnownTag } from "../utils/functions/users/tag";
 import { addCooldown, getResponse, onCooldown } from "../utils/handlers/cooldownhandler";
 import dayjs = require("dayjs");
@@ -79,6 +80,11 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
           select: {
             user: {
               select: {
+                Preferences: {
+                  select: {
+                    leaderboards: true,
+                  },
+                },
                 lastKnownTag: true,
               },
             },
@@ -102,7 +108,8 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
     if (args[4].toLowerCase() !== "null")
       (search.where.AND as Array<Prisma.GameWhereInput>).push({ win: args[4].toLowerCase() == "true" ? 1 : 0 });
 
-    const query: (Game & { economy?: { user?: { lastKnownTag?: string } } })[] = await prisma.game.findMany(search);
+    const query: (Game & { economy?: { user?: { lastKnownTag?: string; Preferences?: { leaderboards: boolean } } } })[] =
+      await prisma.game.findMany(search);
 
     if (query.length === 0) return send({ embeds: [new ErrorEmbed("no results found")] });
 
@@ -114,7 +121,9 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
       query.map((game) => {
         let out =
           `**id** \`${game.id.toString(36)}\` \`(${game.id})\`\n` +
-          `**user** \`${game.economy?.user?.lastKnownTag?.split("#")[0] || "[redacted]"}\`\n` +
+          `**user** \`${
+            game.economy.user.Preferences?.leaderboards ? game.economy.user.lastKnownTag.split("#")[0] : "[hidden]"
+          }\`\n` +
           `**game** \`${game.game}\`\n` +
           `**time** <t:${Math.floor(game.date.getTime() / 1000)}>\n` +
           `**bet** $${game.bet.toLocaleString()}\n` +
@@ -149,7 +158,7 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
         query.map((game) => {
           return {
             id: game.id.toString(36),
-            user: game.economy?.user?.lastKnownTag?.split("#")[0] || "unknown",
+            user: game.economy.user.Preferences?.leaderboards ? game.economy.user.lastKnownTag.split("#")[0] : "[hidden]",
             game: game.game,
             time: game.date,
             bet: game.bet,
@@ -186,7 +195,9 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
 
     if (!game) return send({ embeds: [new ErrorEmbed(`couldn't find a game with id \`${args[0]}\``)] });
 
-    const username = (await getLastKnownTag(game.userId).catch(() => null))?.split("#")[0];
+    const username = (await getPreferences(game.userId))?.leaderboards
+      ? (await getLastKnownTag(game.userId).catch(() => null))?.split("#")[0]
+      : "[hidden]";
 
     const embed = new CustomEmbed(message.member).setHeader(
       username ? `${username}'s ${game.game} game` : `id: ${game.id.toString(36)}`,

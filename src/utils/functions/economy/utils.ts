@@ -5,14 +5,15 @@ import * as fs from "fs";
 import prisma from "../../../init/database";
 import redis from "../../../init/redis";
 import { CustomEmbed } from "../../../models/EmbedBuilders";
-import { AchievementData, BakeryUpgradeData, Item } from "../../../types/Economy";
+import { AchievementData, BakeryUpgradeData, GuildUpgrade, Item } from "../../../types/Economy";
 import { Worker, WorkerUpgrades } from "../../../types/Workers";
 import Constants from "../../Constants";
 import { logger } from "../../logger";
 import { isUserBlacklisted } from "../users/blacklist";
+import { getPreferences } from "../users/notifications";
 import { createProfile, hasProfile } from "../users/utils";
 import { setProgress } from "./achievements";
-import { calcMaxBet, getBalance, getMulti, updateBalance } from "./balance";
+import { calcMaxBet, getBalance, updateBalance } from "./balance";
 import { getGuildByUser } from "./guilds";
 import { addInventoryItem } from "./inventory";
 import { getXp, updateXp } from "./xp";
@@ -25,6 +26,7 @@ let achievements: { [key: string]: AchievementData };
 let baseWorkers: { [key: string]: Worker };
 let baseUpgrades: { [key: string]: WorkerUpgrades };
 let bakeryUpgrades: { [key: string]: BakeryUpgradeData };
+let guildUpgrades: { [key: string]: GuildUpgrade };
 
 const lotteryTicketPrice = 50000;
 /**
@@ -38,12 +40,14 @@ export function loadItems(crypto = true) {
   const achievementsFile: any = fs.readFileSync("./data/achievements.json");
   const workersFile: any = fs.readFileSync("./data/workers.json");
   const bakeryFile: any = fs.readFileSync("./data/bakery_upgrades.json");
+  const guildUpgradesFile: any = fs.readFileSync("./data/guild_upgrades.json");
 
   items = JSON.parse(itemsFile);
   achievements = JSON.parse(achievementsFile);
   baseWorkers = JSON.parse(workersFile).workers;
   baseUpgrades = JSON.parse(workersFile).upgrades;
   bakeryUpgrades = JSON.parse(bakeryFile);
+  guildUpgrades = JSON.parse(guildUpgradesFile);
 
   const workerIds = Object.keys(baseWorkers);
 
@@ -109,6 +113,10 @@ export function getBaseWorkers() {
 
 export function getBaseUpgrades() {
   return baseUpgrades;
+}
+
+export function getGuildUpgradeData() {
+  return guildUpgrades;
 }
 
 export function runEconomySetup() {
@@ -208,7 +216,7 @@ export async function formatBet(bet: string | number, member: GuildMember): Prom
 }
 
 export function formatNumber(number: string | number) {
-  number = number.toString().replaceAll(",", "");
+  number = number.toString().toLowerCase().replaceAll(",", "");
   if (number.includes("b")) {
     number = parseFloat(number.toString()) * 1000000000;
   } else if (number.includes("m")) {
@@ -300,7 +308,7 @@ export async function reset() {
   await prisma.booster.deleteMany();
   await prisma.game.deleteMany();
   await prisma.$executeRaw`TRUNCATE TABLE "Game" RESTART IDENTITY;`;
-  await prisma.itemUse.deleteMany();
+  await prisma.stats.deleteMany();
   await prisma.economyGuildMember.deleteMany();
   await prisma.economyGuild.deleteMany();
   await prisma.auction.deleteMany({ where: { sold: false } });
@@ -310,6 +318,7 @@ export async function reset() {
   await prisma.inventory.deleteMany();
   await prisma.crafting.deleteMany();
   await prisma.bakeryUpgrade.deleteMany();
+  await prisma.graphMetrics.deleteMany({ where: { OR: [{ category: "networth" }, { category: "balance" }] } });
 
   await prisma.economy.deleteMany({
     where: {
@@ -320,12 +329,7 @@ export async function reset() {
   const deleted = await prisma.economy
     .deleteMany({
       where: {
-        AND: [
-          { prestige: 0 },
-          { lastVote: { lt: new Date(Date.now() - ms("12 hours")) } },
-          { dailyStreak: { lt: 2 } },
-          { auctionWatch: { isEmpty: true } },
-        ],
+        AND: [{ prestige: 0 }, { lastVote: { lt: new Date(Date.now() - ms("12 hours")) } }, { dailyStreak: { lt: 2 } }],
       },
     })
     .then((r) => r.count);
@@ -459,7 +463,11 @@ export async function addTicket(member: GuildMember | string, amount = 1) {
 
   if (!(member instanceof GuildMember)) return;
 
-  await redis.hincrby("lotterytickets:queue", member.user.username, amount);
+  await redis.hincrby(
+    "lotterytickets:queue",
+    (await getPreferences(id)).leaderboards ? member.user.username : "[hidden]",
+    amount
+  );
 }
 
 export async function isHandcuffed(id: string): Promise<boolean> {
@@ -534,8 +542,6 @@ export async function doDaily(member: GuildMember) {
   const streak = (await getDailyStreak(member)) + 1;
 
   let total = Math.floor(math.square(streak * 7) + 25_000);
-
-  total += Math.floor(total * (await getMulti(member)));
 
   if (total > 1_000_000) total = 1_000_000;
 

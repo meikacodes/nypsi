@@ -4,8 +4,8 @@ import { CustomEmbed, ErrorEmbed } from "../models/EmbedBuilders";
 import { addProgress } from "../utils/functions/economy/achievements";
 import { getBalance, updateBalance } from "../utils/functions/economy/balance";
 import { getBoosters } from "../utils/functions/economy/boosters";
-import { addInventoryItem, getInventory, setInventoryItem } from "../utils/functions/economy/inventory";
-import { addItemUse } from "../utils/functions/economy/stats";
+import { addInventoryItem, gemBreak, getInventory, setInventoryItem } from "../utils/functions/economy/inventory";
+import { addStat } from "../utils/functions/economy/stats";
 import { createUser, getItems, userExists } from "../utils/functions/economy/utils";
 import { getXp, updateXp } from "../utils/functions/economy/xp";
 import { percentChance } from "../utils/functions/random";
@@ -139,7 +139,7 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
     if (items[i].role === "fish") fishItems.push(i);
   }
 
-  await addItemUse(message.member, fishingRod);
+  await addStat(message.member, fishingRod);
 
   let times = 1;
 
@@ -160,6 +160,24 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
       } else {
         times++;
       }
+    }
+  }
+
+  if (inventory.find((i) => i.item === "purple_gem")?.amount > 0) {
+    if (percentChance(0.2)) {
+      gemBreak(message.author.id, 0.07, "purple_gem");
+      times++;
+    }
+  }
+  if (inventory.find((i) => i.item === "white_gem")?.amount > 0) {
+    if (percentChance(0.2)) {
+      gemBreak(message.author.id, 0.07, "white_gem");
+      times++;
+    }
+  }
+  if (inventory.find((i) => i.item === "crystal_heart")?.amount > 0) {
+    if (percentChance(0.1)) {
+      times++;
     }
   }
 
@@ -263,9 +281,9 @@ async function run(message: Message | (NypsiCommandInteraction & CommandInteract
       if (fishingRod == "terrible_fishing_rod" && items[chosen].rarity == 0) {
         amount = Math.floor(Math.random() * 1) + 1;
       } else if (fishingRod == "fishing_rod" && items[chosen].rarity < 2) {
-        amount = Math.floor(Math.random() * 3) + 1;
+        amount = Math.floor(Math.random() * 2) + 1;
       } else if (fishingRod == "incredible_fishing_rod") {
-        amount = Math.floor(Math.random() * 4) + 1;
+        amount = Math.floor(Math.random() * 3) + 1;
       }
 
       await addInventoryItem(message.member, chosen, amount);
